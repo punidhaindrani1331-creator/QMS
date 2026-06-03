@@ -2,7 +2,7 @@ from sqlalchemy.orm import Session
 from fastapi import BackgroundTasks, HTTPException, status
 from app.models.ticket import Ticket
 from app.schemas.ticket import TicketCreate
-from app.utils.email_sender import send_ticket_confirmation
+from email_sender import send_ticket_confirmation
 
 class TicketService:
     @staticmethod
