@@ -119,14 +119,13 @@ def check_inbox_and_create_tickets(mail):
             
     db.close()
 
-if __name__ == "__main__":
+def start_email_receiver():
     if not EMAIL_USER or not EMAIL_PASS:
         print("[-] EMAIL_USER or EMAIL_PASS not configured in .env. Exiting.")
-        sys.exit(1)
+        return
         
-    print("[*] QMS Real-time Email-to-Ticket Ingestion service started...")
+    print("[*] QMS Real-time Email-to-Ticket Ingestion service started in background...")
     print(f"[*] Listening on Gmail account: {EMAIL_USER}")
-    print("[*] Checking for new incoming emails every 60 seconds. Press Ctrl+C to stop.")
     
     mail = None
     while True:
@@ -135,7 +134,6 @@ if __name__ == "__main__":
                 print("[*] Connecting to IMAP server...")
                 mail = connect_imap()
                 
-            # Send NOOP to keep connection alive and catch disconnects
             status, response = mail.noop()
             if status != 'OK':
                 raise Exception(f"IMAP NOOP failed with status: {status}")
@@ -155,3 +153,6 @@ if __name__ == "__main__":
             print(f"[-] Error in service loop: {e}. Reconnecting in 10s...")
             mail = None
             time.sleep(10)
+
+if __name__ == "__main__":
+    start_email_receiver()
