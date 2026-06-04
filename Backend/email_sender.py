@@ -19,7 +19,6 @@ def send_ticket_confirmation(to_email: str, client_name: str, ticket_id: int, su
     msg = MIMEMultipart()
     msg['From'] = SMTP_USER
     msg['To'] = to_email
-    msg['Cc'] = SMTP_USER
     msg['Subject'] = f"[Ticket #{ticket_id}] Re: {subject} - Query Submitted"
 
     body = f"""
@@ -48,9 +47,9 @@ def send_ticket_confirmation(to_email: str, client_name: str, ticket_id: int, su
             server.ehlo()
             server.login(SMTP_USER, SMTP_PASSWORD)
             text = msg.as_string()
-            server.sendmail(SMTP_USER, [to_email, SMTP_USER], text)
+            server.sendmail(SMTP_USER, [to_email], text)
             server.quit()
-            print(f"[EMAIL OK] Ticket #{ticket_id} sent to: {to_email}, CC: {SMTP_USER}")
+            print(f"[EMAIL OK] Ticket #{ticket_id} sent to: {to_email}")
             return  # Success, exit the loop
         except smtplib.SMTPRecipientsRefused as e:
             print(f"[EMAIL FAIL] Recipient refused for ticket #{ticket_id}: {e.recipients}")

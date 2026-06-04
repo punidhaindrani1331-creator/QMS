@@ -92,6 +92,12 @@ def check_inbox_and_create_tickets(mail):
                     from_header = msg.get("From")
                     client_name, client_email = parse_sender(from_header)
                     
+                    # Prevent loops: Ignore emails from the system itself or mailer daemons
+                    if not client_email or client_email.lower() == EMAIL_USER.lower() or "mailer-daemon" in client_email.lower() or "postmaster" in client_email.lower():
+                        print(f"[-] Ignoring email from system/daemon: {client_email}")
+                        mail.store(e_id, "+FLAGS", "\\Seen")
+                        continue
+                    
                     # Extract Email Body
                     description = get_email_body(msg)
                     
