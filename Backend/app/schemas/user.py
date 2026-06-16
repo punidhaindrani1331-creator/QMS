@@ -5,7 +5,7 @@ class UserCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100, description="User's full name")
     email: EmailStr
     password: str = Field(..., min_length=8, description="Password must be at least 8 characters long")
-    role: Optional[str] = "user"
+    role: Optional[str] = "Customer"
 
 class UserResponse(BaseModel):
     id: int

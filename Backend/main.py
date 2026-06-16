@@ -1,11 +1,12 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from contextlib import asynccontextmanager
 import threading
-from email_receiver import start_email_receiver
+from app.utils.email_receiver import start_email_receiver
 
 from app.database import engine, Base
 import app.models  # Ensures models are registered
-from app.routers import user, ticket
+from app.routers import user, ticket, admin, message
+from app.utils.websocket import manager
 
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -32,7 +33,20 @@ Base.metadata.create_all(bind=engine)
 
 app.include_router(user.router)
 app.include_router(ticket.router)
+app.include_router(admin.router)
+app.include_router(message.router)
+
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        while True:
+            # Listen to keep connection alive
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
 
 @app.get("/")
 def home():
-    return {"message": "QMS API Running"}
+    return {"message": "QMS API Running"}

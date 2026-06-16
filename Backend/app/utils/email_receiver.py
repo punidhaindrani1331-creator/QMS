@@ -49,6 +49,94 @@ def get_email_body(msg):
         return clean_text(msg.get_payload(decode=True))
     return "No plain text body found."
 
+# --- Spam / irrelevant email filter ---
+SPAM_KEYWORDS = [
+    # Advertisements & promotions
+    'unsubscribe', 'click here', 'buy now', 'limited offer', 'sale', 'discount',
+    'offer expires', 'free gift', 'win a', 'you have won', 'congratulations',
+    'earn money', 'make money', 'work from home', 'crypto', 'investment opportunity',
+    'Nigerian', 'lottery', 'prize', 'claim your', 'act now', 'exclusive deal',
+    'newsletter', 'subscribe', 'promo code', 'coupon', 'marketing',
+    # Spam signals
+    'viagra', 'casino', 'betting', 'loan offer', 'insurance offer',
+    'auto-reply', 'no-reply', 'do not reply', 'noreply',
+]
+
+QUERY_KEYWORDS = [
+    # Technical issues
+    'unable to', 'can\'t', 'cannot', 'not working', 'not loading', 'error',
+    'issue', 'problem', 'bug', 'crash', 'slow', 'failed', 'failure',
+    'login', 'password', 'reset', 'access', 'blocked', 'locked',
+    # Service requests
+    'request', 'please provide', 'need', 'require', 'create account',
+    'new user', 'permission', 'software', 'hardware', 'allocation',
+    # Bug reports
+    'not displaying', 'incorrect', 'wrong', 'missing', 'blank', 'broken',
+    # Complaints
+    'complaint', 'charged', 'billing', 'invoice', 'defect', 'poor service',
+    'dispute', 'refund', 'overcharged',
+    # General inquiries
+    'inquiry', 'enquiry', 'update', 'status', 'information', 'clarification',
+    'question', 'how to', 'ticket', 'follow up', 'followup',
+]
+
+def is_valid_query(subject: str, body: str) -> bool:
+    """Returns True only if email looks like a genuine support query."""
+    text = (subject + ' ' + body).lower()
+
+    # Reject if spam keywords found
+    for kw in SPAM_KEYWORDS:
+        if kw.lower() in text:
+            return False
+
+    # Accept if any query keyword found
+    for kw in QUERY_KEYWORDS:
+        if kw.lower() in text:
+            return True
+
+    # Reject if no query signal found at all
+    return False
+
+
+# --- Keyword maps for auto-categorization ---
+CATEGORY_KEYWORDS = {
+    'Billing': [
+        'billing', 'invoice', 'payment', 'charge', 'charged', 'refund',
+        'overcharged', 'receipt', 'subscription', 'fee', 'price', 'cost',
+        'transaction', 'statement', 'account balance', 'dispute',
+    ],
+    'Complaint': [
+        'complaint', 'unhappy', 'disappointed', 'frustrated', 'poor service',
+        'unacceptable', 'terrible', 'worst', 'bad experience', 'rude',
+        'not satisfied', 'defect', 'broken product', 'misleading',
+    ],
+    'Bug': [
+        'bug', 'error', 'crash', 'not working', 'not loading', 'broken',
+        'not displaying', 'issue', 'problem', 'failed', 'failure', 'glitch',
+        'incorrect', 'wrong result', 'missing data', 'blank page', 'slow',
+    ],
+    'Request': [
+        'request', 'please provide', 'need', 'require', 'create account',
+        'new user', 'permission', 'access', 'software', 'hardware',
+        'allocation', 'how to', 'question', 'inquiry', 'enquiry',
+        'update', 'information', 'clarification', 'follow up', 'followup',
+    ],
+}
+
+def categorize_email(subject: str, body: str) -> str:
+    """
+    Returns the best-matching category for the email based on keyword scoring.
+    Defaults to 'Request' if no strong match found.
+    """
+    text = (subject + ' ' + body).lower()
+    scores = {cat: 0 for cat in CATEGORY_KEYWORDS}
+    for cat, keywords in CATEGORY_KEYWORDS.items():
+        for kw in keywords:
+            if kw.lower() in text:
+                scores[cat] += 1
+    best = max(scores, key=scores.get)
+    return best if scores[best] > 0 else 'Request'
+
 def connect_imap():
     mail = imaplib.IMAP4_SSL(IMAP_SERVER, IMAP_PORT)
     mail.login(EMAIL_USER, EMAIL_PASS)
@@ -100,15 +188,26 @@ def check_inbox_and_create_tickets(mail):
                     
                     # Extract Email Body
                     description = get_email_body(msg)
-                    
+
+                    # Filter: only process genuine support queries
+                    if not is_valid_query(subject, description):
+                        print(f"[-] Rejected non-query email: '{subject}' from {client_email}")
+                        mail.store(e_id, "+FLAGS", "\\Seen")
+                        continue
+
                     print(f"[+] Processing Email: '{subject}' from {client_name} ({client_email})")
                     
-                    # Create Ticket in QMS SQLite Database
+                    # Auto-categorize based on email subject + body
+                    category = categorize_email(subject, description)
+                    print(f"[~] Auto-categorized as '{category}'")
+
+                    # Create Ticket in QMS Database
                     ticket_in = TicketCreate(
                       client_name=client_name,
                       client_email=client_email,
                       subject=subject,
-                      description=description.strip()
+                      description=description.strip(),
+                      category=category
                     )
                     
                     db_ticket = TicketService.create_ticket(

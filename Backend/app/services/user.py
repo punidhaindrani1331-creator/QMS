@@ -18,12 +18,29 @@ class UserService:
         # Securely hash the password using bcrypt
         hashed_password = hash_password(user_in.password)
         
-        # Add new user with hashed password
+        # All new registrations default to Customer — Staff role is granted by an existing Staff member
         db_user = User(
             name=user_in.name,
             email=user_in.email,
             password=hashed_password,
-            role=user_in.role
+            role='Customer'
+        )
+        db.add(db_user)
+        db.commit()
+        db.refresh(db_user)
+        return db_user
+
+    @staticmethod
+    def create_staff(db: Session, user_in: UserCreate) -> User:
+        """Admin-only: create a Staff account directly."""
+        existing_user = db.query(User).filter(User.email == user_in.email).first()
+        if existing_user:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
+        db_user = User(
+            name=user_in.name,
+            email=user_in.email,
+            password=hash_password(user_in.password),
+            role='Staff'
         )
         db.add(db_user)
         db.commit()
@@ -32,28 +49,22 @@ class UserService:
 
     @staticmethod
     def authenticate_user(db: Session, credentials: UserLogin) -> str:
-        # Find the user by email or name (username)
         if "@" in credentials.username:
             user = db.query(User).filter(User.email == credentials.username).first()
         else:
             user = db.query(User).filter(User.name == credentials.username).first()
-            
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid username/email or password",
+                detail="Invalid email or password",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        
-        # Verify the password using bcrypt
         if not verify_password(credentials.password, user.password):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid username/email or password",
+                detail="Invalid email or password",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        
-        # Generate the JWT access token containing both user_id and email
         return create_access_token(data={"sub": user.email, "user_id": user.id})
 
     @staticmethod
@@ -74,6 +85,17 @@ class UserService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found"
             )
+        return user
+
+    @staticmethod
+    def update_user_role(db: Session, user_id: int, new_role: str) -> User:
+        VALID_ROLES = {'Customer', 'Staff', 'Admin'}
+        if new_role not in VALID_ROLES:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Role must be one of: {VALID_ROLES}")
+        user = UserService.get_user_by_id(db, user_id)
+        user.role = new_role
+        db.commit()
+        db.refresh(user)
         return user
 
     @staticmethod

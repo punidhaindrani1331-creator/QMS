@@ -4,6 +4,8 @@ from datetime import datetime, timedelta
 from typing import Optional
 from dotenv import load_dotenv
 from jose import jwt, JWTError
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
 
 load_dotenv()
 
@@ -52,4 +54,43 @@ def decode_access_token(token: str) -> Optional[dict]:
         return payload
     except JWTError:
         return None
+
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/users/login")
+
+
+def get_current_user(token: str = Depends(oauth2_scheme)):
+    """FastAPI dependency — injects the current authenticated user's payload."""
+    payload = decode_access_token(token)
+    if not payload:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+    return payload
+
+
+def require_staff(current_user: dict = Depends(get_current_user)):
+    """FastAPI dependency — raises 403 if the caller is not Staff or Admin."""
+    from app.database import SessionLocal
+    from app.models.user import User
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.email == current_user["sub"]).first()
+        if not user or user.role not in ("Staff", "Admin"):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Staff access required")
+        return user
+    finally:
+        db.close()
+
+
+def require_admin(current_user: dict = Depends(get_current_user)):
+    """FastAPI dependency — raises 403 if the caller is not Admin."""
+    from app.database import SessionLocal
+    from app.models.user import User
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.email == current_user["sub"]).first()
+        if not user or user.role != "Admin":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+        return user
+    finally:
+        db.close()
 
