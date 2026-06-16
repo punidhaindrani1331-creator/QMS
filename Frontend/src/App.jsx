@@ -8,6 +8,7 @@ import { Dashboard } from './pages/Dashboard';
 import { TicketQueue } from './pages/TicketQueue';
 import { NewTicket } from './pages/NewTicket';
 import { TicketDetails } from './pages/TicketDetails';
+import { AdminPanel } from './pages/AdminPanel';
 
 // Simple Router wrapper to guard private routes
 const PrivateRoute = ({ children }) => {
@@ -70,6 +71,14 @@ function App() {
             element={
               <PrivateRoute>
                 <TicketDetails />
+              </PrivateRoute>
+            } 
+          />
+          <Route 
+            path="/admin" 
+            element={
+              <PrivateRoute>
+                <AdminPanel />
               </PrivateRoute>
             } 
           />
