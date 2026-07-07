@@ -7,7 +7,7 @@ from app.constants import UserRole
 from app.dependencies import get_db
 from app.schemas.user import UserCreate, UserResponse, UserLogin, Token
 from app.services.user import UserService
-from app.utils.security import decode_access_token, require_admin, require_staff
+from app.utils.security import get_current_user, require_admin, require_staff
 
 
 class RoleUpdate(BaseModel):
