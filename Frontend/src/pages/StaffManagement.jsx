@@ -14,9 +14,9 @@ export const StaffManagement = () => {
     // Only Admin can access this page (Admin is the one with GET /users permission)
     if (user?.role !== 'Admin') { navigate('/'); return; }
     api.getAllUsers().then(data => {
-      // Filter out Admin accounts — they must never appear in the Staff/User management table
-      const nonAdminUsers = data.filter(u => u.role !== 'Admin');
-      setUsers(nonAdminUsers);
+      // Show only Staff users in this management table
+      const staffUsers = data.filter(u => u.role === 'Staff');
+      setUsers(staffUsers);
       setLoading(false);
     });
   }, []);
@@ -92,7 +92,6 @@ export const StaffManagement = () => {
                   <th>Role</th>
                   <th>Phone</th>
                   <th>Department</th>
-                  <th style={{ textAlign: 'right' }}>Change Role</th>
                 </tr>
               </thead>
               <tbody>
@@ -135,24 +134,6 @@ export const StaffManagement = () => {
                     </td>
                     <td style={{ color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
                       {u.department || <span style={{ color: 'var(--text-muted)' }}>—</span>}
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
-                      {u.email !== user?.email ? (
-                        <select
-                          className="form-select"
-                          style={{ width: '140px', padding: '0.4rem 0.75rem', fontSize: '0.85rem', display: 'inline-block' }}
-                          value={u.role}
-                          onChange={(e) => handleRoleChange(u.id, e.target.value)}
-                          aria-label={`Change role for ${u.name}`}
-                        >
-                          <option value="Customer">Customer</option>
-                          <option value="Staff">Staff</option>
-                        </select>
-                      ) : (
-                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                          Cannot change own role
-                        </span>
-                      )}
                     </td>
                   </tr>
                 ))}
