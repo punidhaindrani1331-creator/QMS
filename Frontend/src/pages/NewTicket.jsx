@@ -7,6 +7,7 @@ export const NewTicket = () => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState('Medium');
+  const [category, setCategory] = useState('Request');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
@@ -22,8 +23,9 @@ export const NewTicket = () => {
 
     setIsSubmitting(true);
     try {
-      const createdTicket = await api.createTicket({ title, description, priority });
-      navigate(`/ticket/${createdTicket.id}`);
+      const createdTicket = await api.createTicket({ title, description, priority, category });
+      navigate('/');
+      setTimeout(() => navigate(`/ticket/${createdTicket.id}`), 100);
     } catch (err) {
       setError(err.message || 'Failed to register queue ticket');
     } finally {
@@ -80,6 +82,20 @@ export const NewTicket = () => {
             </div>
 
             <div className="form-group">
+              <label className="form-label">Category</label>
+              <select
+                className="form-select"
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+              >
+                <option value="Request">Request</option>
+                <option value="Bug">Bug</option>
+                <option value="Billing">Billing</option>
+                <option value="Complaint">Complaint</option>
+              </select>
+            </div>
+
+            <div className="form-group">
               <label className="form-label">Priority Level</label>
               <select
                 className="form-select"
@@ -89,6 +105,7 @@ export const NewTicket = () => {
                 <option value="Low">Low (General Inquiry)</option>
                 <option value="Medium">Medium (Technical Issue)</option>
                 <option value="High">High (Immediate Assistance Required)</option>
+                <option value="Critical">Critical (System Down)</option>
               </select>
             </div>
 

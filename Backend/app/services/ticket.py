@@ -1,34 +1,44 @@
 import threading
+import json
+import os
 from sqlalchemy.orm import Session
 from fastapi import BackgroundTasks, HTTPException, status
+
+from app.constants import TicketStatus, TicketPriority, DEFAULT_WAIT_TIME_MINS
 from app.models.ticket import Ticket
 from app.schemas.ticket import TicketCreate
 from app.utils.email_sender import send_ticket_confirmation, send_status_update_email
-
-# Minutes allocated per pending ticket in the queue
-WAIT_PER_TICKET_MINS = 12
+from app.utils.logger import email_logger
 
 
 def get_wait_time_mins() -> int:
-    import json
-    import os
-    settings_file = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "settings.json")
-    if os.path.exists(settings_file):
-        try:
-            with open(settings_file, "r") as f:
-                data = json.load(f)
-                return int(data.get("wait_time_per_ticket", 12))
-        except Exception:
-            pass
-    return WAIT_PER_TICKET_MINS
+    """
+    Read the per-ticket wait time from settings.json.
+    Falls back to DEFAULT_WAIT_TIME_MINS and logs a warning on any read/parse error.
+    """
+    settings_file = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+        "settings.json",
+    )
+    if not os.path.exists(settings_file):
+        return DEFAULT_WAIT_TIME_MINS
+
+    try:
+        with open(settings_file, "r") as f:
+            data = json.load(f)
+        value = data.get("wait_time_per_ticket", DEFAULT_WAIT_TIME_MINS)
+        return int(value)
+    except (OSError, ValueError, TypeError) as exc:
+        email_logger.warning(f"Could not read wait_time_per_ticket from settings: {exc}. Using default {DEFAULT_WAIT_TIME_MINS} min")
+        return DEFAULT_WAIT_TIME_MINS
 
 
-def _recalculate_queue(db: Session):
+def _recalculate_queue(db: Session) -> None:
     """Recalculate queue_position and estimated_wait for all Pending tickets."""
     wait_time = get_wait_time_mins()
     pending = (
         db.query(Ticket)
-        .filter(Ticket.status == "Pending")
+        .filter(Ticket.status == TicketStatus.PENDING)
         .order_by(Ticket.created_at.asc())
         .all()
     )
@@ -38,29 +48,37 @@ def _recalculate_queue(db: Session):
     db.commit()
 
 
+def _send_in_thread(target, args: tuple, timeout: int = 30) -> None:
+    """Run an email-sending function in a non-daemon thread with a join timeout."""
+    t = threading.Thread(target=target, args=args, daemon=False)
+    t.start()
+    t.join(timeout=timeout)
+
 
 class TicketService:
+
     @staticmethod
-    def create_ticket(db: Session, ticket_in: TicketCreate,
-                      background_tasks: BackgroundTasks = None) -> Ticket:
+    def create_ticket(
+        db: Session,
+        ticket_in: TicketCreate,
+        background_tasks: BackgroundTasks = None,
+    ) -> Ticket:
         db_ticket = Ticket(
             client_name=ticket_in.client_name,
             client_email=ticket_in.client_email,
             subject=ticket_in.subject,
             description=ticket_in.description,
-            priority=ticket_in.priority or "Medium",
+            priority=ticket_in.priority or TicketPriority.MEDIUM,
             category=ticket_in.category,
-            status="Pending"
+            status=TicketStatus.PENDING,
         )
         db.add(db_ticket)
         db.commit()
         db.refresh(db_ticket)
 
-        # Recalculate queue positions after inserting the new ticket
         _recalculate_queue(db)
-        db.refresh(db_ticket)   # pick up the freshly computed position/wait
+        db.refresh(db_ticket)
 
-        # Send confirmation email
         email_args = (
             db_ticket.client_email,
             db_ticket.client_name,
@@ -68,12 +86,9 @@ class TicketService:
             db_ticket.subject,
         )
         if background_tasks:
-            print(f"[EMAIL] Scheduling confirmation for ticket #{db_ticket.id} → {db_ticket.client_email}")
             background_tasks.add_task(send_ticket_confirmation, *email_args)
         else:
-            # Called from email_receiver thread — run in a daemon thread to avoid blocking
-            t = threading.Thread(target=send_ticket_confirmation, args=email_args, daemon=True)
-            t.start()
+            _send_in_thread(send_ticket_confirmation, email_args)
 
         return db_ticket
 
@@ -83,28 +98,29 @@ class TicketService:
         if not ticket:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Ticket not found"
+                detail="Ticket not found",
             )
         return ticket
 
     @staticmethod
-    def update_ticket_status(db: Session, ticket_id: int, new_status: str,
-                              background_tasks: BackgroundTasks = None) -> Ticket:
+    def update_ticket_status(
+        db: Session,
+        ticket_id: int,
+        new_status: str,
+        background_tasks: BackgroundTasks = None,
+    ) -> Ticket:
         ticket = TicketService.get_ticket_by_id(db, ticket_id)
         ticket.status = new_status
 
-        # Clear queue position when ticket leaves the pending queue
-        if new_status != "Pending":
+        if new_status != TicketStatus.PENDING:
             ticket.queue_position = None
-            ticket.estimated_wait = None if new_status == "Completed" else ticket.estimated_wait
+        if new_status == TicketStatus.COMPLETED:
+            ticket.estimated_wait = None
 
         db.commit()
         db.refresh(ticket)
-
-        # Recalculate positions for remaining pending tickets
         _recalculate_queue(db)
 
-        # Send status update email (non-blocking)
         email_args = (
             ticket.client_email,
             ticket.client_name,
@@ -116,10 +132,9 @@ class TicketService:
         if background_tasks:
             background_tasks.add_task(send_status_update_email, *email_args)
         else:
-            t = threading.Thread(target=send_status_update_email, args=email_args, daemon=True)
-            t.start()
+            _send_in_thread(send_status_update_email, email_args)
 
-        print(f"[STATUS] Ticket #{ticket_id} → {new_status} | email queued for {ticket.client_email}")
+        email_logger.info(f"Ticket #{ticket_id} status updated to {new_status} | email queued for {ticket.client_email}")
         return ticket
 
     @staticmethod

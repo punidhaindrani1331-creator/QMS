@@ -5,10 +5,12 @@ import { Layout } from './components/Layout';
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
 import { Dashboard } from './pages/Dashboard';
-import { TicketQueue } from './pages/TicketQueue';
+import { LiveQueueBoard } from './pages/LiveQueueBoard';
 import { NewTicket } from './pages/NewTicket';
-import { TicketDetails } from './pages/TicketDetails';
+import { TicketStatusTracker } from './pages/TicketStatusTracker';
 import { AdminPanel } from './pages/AdminPanel';
+import { StaffManagement } from './pages/StaffManagement';
+import { ResetPassword } from './pages/ResetPassword';
 
 // Simple Router wrapper to guard private routes
 const PrivateRoute = ({ children }) => {
@@ -40,6 +42,7 @@ function App() {
           {/* Public Auth Routes */}
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
 
           {/* Protected Main Routes */}
           <Route 
@@ -54,7 +57,7 @@ function App() {
             path="/queue" 
             element={
               <PrivateRoute>
-                <TicketQueue />
+                <LiveQueueBoard />
               </PrivateRoute>
             } 
           />
@@ -70,7 +73,7 @@ function App() {
             path="/ticket/:id" 
             element={
               <PrivateRoute>
-                <TicketDetails />
+                <TicketStatusTracker />
               </PrivateRoute>
             } 
           />
@@ -81,6 +84,14 @@ function App() {
                 <AdminPanel />
               </PrivateRoute>
             } 
+          />
+          <Route
+            path="/staff"
+            element={
+              <PrivateRoute>
+                <StaffManagement />
+              </PrivateRoute>
+            }
           />
 
           {/* Catch-all Redirect */}

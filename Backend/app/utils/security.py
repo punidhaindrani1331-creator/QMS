@@ -1,96 +1,132 @@
-from passlib.context import CryptContext
 import os
 from datetime import datetime, timedelta
 from typing import Optional
+
 from dotenv import load_dotenv
 from jose import jwt, JWTError
+from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 
+from app.constants import UserRole, STAFF_ROLES, DEFAULT_TOKEN_EXPIRE_MINUTES
+from app.utils.logger import auth_logger
+
 load_dotenv()
 
-# JWT Configurations from .env
-SECRET_KEY = os.getenv("JWT_SECRET", "supersecretkey")
-ALGORITHM = os.getenv("ALGORITHM", "HS256")
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 30))
+# ── JWT configuration ─────────────────────────────────────────────────────────
+_raw_secret = os.getenv("JWT_SECRET", "")
+if not _raw_secret:
+    raise RuntimeError(
+        "JWT_SECRET environment variable is not set. "
+        "Set a strong random secret in your .env file before starting the server."
+    )
+SECRET_KEY: str = _raw_secret
+ALGORITHM: str = os.getenv("ALGORITHM", "HS256")
+ACCESS_TOKEN_EXPIRE_MINUTES: int = DEFAULT_TOKEN_EXPIRE_MINUTES
 
-# Configure passlib to use bcrypt
+# ── Password hashing ──────────────────────────────────────────────────────────
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# --- HASHING HELPERS ---
+
 def hash_password(password: str) -> str:
-    """
-    Hashes a plain text password using bcrypt.
-    """
+    """Hash a plain-text password with bcrypt."""
     return pwd_context.hash(password)
 
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """
-    Verifies a plain text password against a stored bcrypt hash.
-    """
+    """Verify a plain-text password against a stored bcrypt hash."""
     return pwd_context.verify(plain_password, hashed_password)
 
-# --- JWT HELPERS ---
+
+# ── JWT helpers ───────────────────────────────────────────────────────────────
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
-    """
-    Generates a secure JWT access token with an expiration time.
-    """
+    """Generate a signed JWT access token."""
     to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
+    expire = datetime.utcnow() + (
+        expires_delta if expires_delta else timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
+    to_encode["exp"] = expire
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
 
 def decode_access_token(token: str) -> Optional[dict]:
     """
-    Decodes a JWT token. Returns the payload dictionary or None if invalid.
+    Decode and verify a JWT token.
+    Returns the payload dict on success, or None if the token is invalid/expired.
     """
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return payload
+        return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
     except JWTError:
         return None
 
 
+# ── FastAPI dependencies ──────────────────────────────────────────────────────
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/users/login")
 
 
-def get_current_user(token: str = Depends(oauth2_scheme)):
-    """FastAPI dependency — injects the current authenticated user's payload."""
+def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
+    """Inject the current authenticated user's JWT payload."""
     payload = decode_access_token(token)
     if not payload:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
     return payload
 
 
 def require_staff(current_user: dict = Depends(get_current_user)):
-    """FastAPI dependency — raises 403 if the caller is not Staff or Admin."""
+    """Allow Staff or Admin; reject everyone else with 403."""
     from app.database import SessionLocal
-    from app.models.user import User
+    from app.utils.auth_helpers import resolve_user_from_token
+
     db = SessionLocal()
     try:
-        user = db.query(User).filter(User.email == current_user["sub"]).first()
-        if not user or user.role not in ("Staff", "Admin"):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Staff access required")
+        user = resolve_user_from_token(db, current_user)
+        if user.role not in STAFF_ROLES:
+            auth_logger.warning(f"Access denied for non-staff user: {user.email}")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Staff or Admin access required",
+            )
         return user
     finally:
         db.close()
 
 
 def require_admin(current_user: dict = Depends(get_current_user)):
-    """FastAPI dependency — raises 403 if the caller is not Admin."""
+    """Allow Admin only; reject everyone else with 403."""
     from app.database import SessionLocal
-    from app.models.user import User
+    from app.utils.auth_helpers import resolve_user_from_token
+
     db = SessionLocal()
     try:
-        user = db.query(User).filter(User.email == current_user["sub"]).first()
-        if not user or user.role != "Admin":
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+        user = resolve_user_from_token(db, current_user)
+        if user.role != UserRole.ADMIN:
+            auth_logger.warning(f"Access denied for non-admin user: {user.email}")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Admin access required",
+            )
         return user
     finally:
         db.close()
 
+
+def require_staff_only(current_user: dict = Depends(get_current_user)):
+    """Allow Staff only (not Admin, not Customer)."""
+    from app.database import SessionLocal
+    from app.utils.auth_helpers import resolve_user_from_token
+
+    db = SessionLocal()
+    try:
+        user = resolve_user_from_token(db, current_user)
+        if user.role != UserRole.STAFF:
+            auth_logger.warning(f"Access denied for non-staff user: {user.email}")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Staff access required",
+            )
+        return user
+    finally:
+        db.close()

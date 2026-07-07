@@ -1,28 +1,21 @@
 import threading
 from fastapi import APIRouter, Depends, status, BackgroundTasks, HTTPException
 from sqlalchemy.orm import Session
-from app.database import SessionLocal
-from app.schemas.message import MessageCreate, MessageResponse
+
+from app.constants import STAFF_ROLES
+from app.dependencies import get_db
 from app.models.message import Message
 from app.models.ticket import Ticket
 from app.models.user import User
+from app.schemas.message import MessageCreate, MessageResponse
 from app.utils.security import get_current_user
 from app.utils.email_sender import send_reply_notification
 
-router = APIRouter(
-    prefix="/tickets/{ticket_id}/messages",
-    tags=["Messages"]
-)
+router = APIRouter(prefix="/tickets/{ticket_id}/messages", tags=["Messages"])
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
-# Helper to serialize message for WebSocket
-def serialize_message(msg):
+def _serialize_message(msg) -> dict:
+    """Serialize a Message ORM object for WebSocket broadcasts."""
     return {
         "id": msg.id,
         "ticket_id": msg.ticket_id,
@@ -30,8 +23,38 @@ def serialize_message(msg):
         "sender_name": msg.sender_name,
         "sender_role": msg.sender_role,
         "content": msg.content,
-        "created_at": msg.created_at.isoformat() if msg.created_at else None
+        "created_at": msg.created_at.isoformat() if msg.created_at else None,
     }
+
+
+def _get_authorized_user_and_ticket(
+    ticket_id: int,
+    db: Session,
+    current_user: dict,
+):
+    """
+    Shared authorization helper for message endpoints.
+    Returns (db_user, ticket, is_staff_or_admin).
+    Raises 401/403/404 as appropriate.
+    """
+    from app.utils.auth_helpers import resolve_user_from_token
+
+    db_user = resolve_user_from_token(db, current_user)
+
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found")
+
+    is_staff_or_admin = db_user.role in STAFF_ROLES
+    is_ticket_owner = ticket.client_email.lower() == db_user.email.lower()
+
+    if not (is_staff_or_admin or is_ticket_owner):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to access replies for this ticket",
+        )
+    return db_user, ticket, is_staff_or_admin
+
 
 # ── Create Chat Message (Authenticated) ──────────────────────────────────────
 @router.post("", response_model=MessageResponse, status_code=status.HTTP_201_CREATED)
@@ -40,41 +63,27 @@ def create_message(
     message_in: MessageCreate,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
 ):
-    db_user = db.query(User).filter(User.email == current_user["sub"]).first()
-    if not db_user:
-        raise HTTPException(status_code=401, detail="User session invalid")
+    db_user, ticket, is_staff_or_admin = _get_authorized_user_and_ticket(
+        ticket_id, db, current_user
+    )
 
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
-    if not ticket:
-        raise HTTPException(status_code=404, detail="Ticket not found")
-
-    # Access check: Must be the ticket owner OR staff/admin
-    is_staff_or_admin = db_user.role.lower() in ("staff", "admin")
-    is_ticket_owner = ticket.client_email.lower() == db_user.email.lower()
-
-    if not (is_staff_or_admin or is_ticket_owner):
-        raise HTTPException(status_code=403, detail="Not authorized to post replies to this ticket")
-
-    # Create message
     db_message = Message(
         ticket_id=ticket_id,
         sender_id=db_user.id,
         sender_name=db_user.name,
         sender_role=db_user.role,
-        content=message_in.content
+        content=message_in.content,
     )
     db.add(db_message)
     db.commit()
     db.refresh(db_message)
 
-    # Broadcast via WebSockets
     from app.utils.websocket import broadcast_event
-    serialized = serialize_message(db_message)
-    broadcast_event("message_created", serialized)
+    broadcast_event("message_created", _serialize_message(db_message))
 
-    # If Staff/Admin replied, send an email notification to the customer
+    # Notify the customer by email when staff/admin replies
     if is_staff_or_admin:
         email_args = (
             ticket.client_email,
@@ -82,37 +91,26 @@ def create_message(
             ticket.id,
             ticket.subject,
             db_message.content,
-            db_user.name
+            db_user.name,
         )
         if background_tasks:
             background_tasks.add_task(send_reply_notification, *email_args)
         else:
-            t = threading.Thread(target=send_reply_notification, args=email_args, daemon=True)
+            t = threading.Thread(target=send_reply_notification, args=email_args, daemon=False)
             t.start()
+            t.join(timeout=30)
 
     return db_message
+
 
 # ── Get Chat Messages (Authenticated) ────────────────────────────────────────
 @router.get("", response_model=list[MessageResponse])
 def get_messages(
     ticket_id: int,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
 ):
-    db_user = db.query(User).filter(User.email == current_user["sub"]).first()
-    if not db_user:
-        raise HTTPException(status_code=401, detail="User session invalid")
-
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
-    if not ticket:
-        raise HTTPException(status_code=404, detail="Ticket not found")
-
-    # Access check: Must be ticket owner OR staff/admin
-    is_staff_or_admin = db_user.role.lower() in ("staff", "admin")
-    is_ticket_owner = ticket.client_email.lower() == db_user.email.lower()
-
-    if not (is_staff_or_admin or is_ticket_owner):
-        raise HTTPException(status_code=403, detail="Not authorized to view replies for this ticket")
+    _get_authorized_user_and_ticket(ticket_id, db, current_user)
 
     return (
         db.query(Message)

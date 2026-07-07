@@ -2,7 +2,11 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import os
+import time
 from dotenv import load_dotenv
+
+from app.constants import EMAIL_RETRY_ATTEMPTS, EMAIL_RETRY_BACKOFF_BASE, EMAIL_SMTP_TIMEOUT
+from app.utils.logger import email_logger
 
 load_dotenv()
 
@@ -15,7 +19,7 @@ SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 def _send_email(to_email: str, subject: str, body: str):
     """Internal helper: sends a plain-text email with retries."""
     if not SMTP_USER or not SMTP_PASSWORD:
-        print("SMTP_USER or SMTP_PASSWORD not configured. Skipping email.")
+        email_logger.error("SMTP_USER or SMTP_PASSWORD not configured in .env")
         return
 
     msg = MIMEMultipart()
@@ -24,31 +28,45 @@ def _send_email(to_email: str, subject: str, body: str):
     msg['Subject'] = subject
     msg.attach(MIMEText(body, 'plain'))
 
-    max_retries = 3
-    for attempt in range(max_retries):
+    email_logger.info(f"Preparing to send email to {to_email} with subject: {subject}")
+
+    last_error = None
+    for attempt in range(EMAIL_RETRY_ATTEMPTS):
         try:
-            server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=20)
+            email_logger.debug(f"Connection attempt {attempt + 1}/{EMAIL_RETRY_ATTEMPTS} to {SMTP_SERVER}:{SMTP_PORT}")
+            server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=EMAIL_SMTP_TIMEOUT)
             server.ehlo()
             server.starttls()
             server.ehlo()
+            email_logger.debug(f"Authenticating as {SMTP_USER}")
             server.login(SMTP_USER, SMTP_PASSWORD)
+            email_logger.debug("Sending message")
             server.sendmail(SMTP_USER, [to_email], msg.as_string())
             server.quit()
-            print(f"[EMAIL OK] Sent to: {to_email} | Subject: {subject}")
+            email_logger.info(f"Successfully sent email to {to_email}")
             return
         except smtplib.SMTPRecipientsRefused as e:
-            print(f"[EMAIL FAIL] Recipient refused: {e.recipients}")
-            break
+            email_logger.error(f"Recipient refused by server: {e.recipients}")
+            return
         except smtplib.SMTPAuthenticationError as e:
-            print(f"[EMAIL FAIL] Auth error: {e}")
-            break
+            email_logger.error(f"SMTP authentication failed. Check SMTP_USER/SMTP_PASSWORD in .env: {e}")
+            return
+        except smtplib.SMTPException as e:
+            last_error = e
+            email_logger.warning(f"SMTP error on attempt {attempt + 1}: {type(e).__name__}: {e}")
+        except OSError as e:
+            last_error = e
+            email_logger.warning(f"Network/socket error on attempt {attempt + 1}: {type(e).__name__}: {e}")
         except Exception as e:
-            print(f"[EMAIL WARNING] Attempt {attempt + 1} failed: {type(e).__name__}: {e}")
-            if attempt < max_retries - 1:
-                import time
-                time.sleep(2)
-            else:
-                print(f"[EMAIL FAIL] Final attempt failed for {to_email}")
+            last_error = e
+            email_logger.warning(f"Unexpected error on attempt {attempt + 1}: {type(e).__name__}: {e}")
+
+        if attempt < EMAIL_RETRY_ATTEMPTS - 1:
+            wait = EMAIL_RETRY_BACKOFF_BASE ** attempt
+            email_logger.debug(f"Retrying in {wait}s")
+            time.sleep(wait)
+
+    email_logger.error(f"All {EMAIL_RETRY_ATTEMPTS} attempts failed to send to {to_email}. Last error: {last_error}")
 
 
 def send_ticket_confirmation(to_email: str, client_name: str, ticket_id: int, subject: str):
@@ -139,5 +157,27 @@ To respond, please log in to the QMS Hub or reply directly to this email.
 Best regards,
 QMS Support Team"""
     _send_email(to_email, email_subject, body)
+
+
+def send_rejection_email(to_email: str, client_name: str, original_subject: str):
+    """Sent when an email query is rejected because it doesn't look like a support query."""
+    email_subject = f"Re: {original_subject} - Email Could Not Be Processed"
+    body = f"""Dear {client_name},
+
+We received your email with the subject "{original_subject}", but our automated system was unable to process it.
+
+To help us route your request to the correct department, support emails must describe a service request or a technical issue.
+
+Please send a new email containing one of the following key terms or details:
+- Technical issues (e.g., "unable to login", "password reset", "error loading page", "not working", "bug")
+- Service requests (e.g., "request permission", "need new account", "require software")
+- Complaints or billing questions (e.g., "billing inquiry", "invoice issue", "dispute charge")
+
+If you are a registered user, you can also log in to the QMS Hub dashboard to create a ticket directly.
+
+Best regards,
+QMS Support Team"""
+    _send_email(to_email, email_subject, body)
+
 
 

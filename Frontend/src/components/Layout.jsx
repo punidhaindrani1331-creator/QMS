@@ -8,7 +8,9 @@ import {
   LogOut, 
   Wifi, 
   WifiOff, 
-  User 
+  User,
+  Users,
+  ShieldAlert
 } from 'lucide-react';
 
 export const Layout = ({ children }) => {
@@ -21,11 +23,23 @@ export const Layout = ({ children }) => {
     navigate('/login');
   };
 
+  const isAdmin = user?.role === 'Admin';
+  const isStaff = user?.role === 'Staff' || isAdmin;
+  const isStaffOnly = user?.role === 'Staff';
+
   const navItems = [
     { label: 'Dashboard', path: '/', icon: LayoutDashboard },
-    { label: 'Queue Board', path: '/queue', icon: Ticket },
-    { label: 'Create Ticket', path: '/new-ticket', icon: PlusCircle },
-  ];
+    // Staff-only: see the live queue board
+    ...(isStaffOnly ? [{ label: 'Queue Board', path: '/queue', icon: Ticket }] : []),
+    // Customer-only: view their own tickets and create new ones
+    { label: 'My Tickets', path: '/queue', icon: Ticket, hide: isStaff },
+    { label: 'Create Ticket', path: '/new-ticket', icon: PlusCircle, hide: isStaff },
+    // Admin-only pages
+    ...(isAdmin ? [
+      { label: 'Admin Panel', path: '/admin', icon: ShieldAlert },
+      { label: 'Staff Management', path: '/staff', icon: Users },
+    ] : []),
+  ].filter(item => !item.hide);
 
   return (
     <div className="app-container">
