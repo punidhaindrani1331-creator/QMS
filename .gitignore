@@ -5,3 +5,4 @@ __pycache__/
 dist/
 .vite/
 Frontend/.env
+qms.log
