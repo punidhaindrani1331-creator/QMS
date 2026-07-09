@@ -2,8 +2,8 @@ import threading
 from fastapi import APIRouter, Depends, status, BackgroundTasks, HTTPException
 from sqlalchemy.orm import Session
 
-from app.constants import STAFF_ROLES
-from app.dependencies import get_db
+from app.utils.constants import STAFF_ROLES
+from app.utils.dependencies import get_db
 from app.models.message import Message
 from app.models.ticket import Ticket
 from app.models.user import User

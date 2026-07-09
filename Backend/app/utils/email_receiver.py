@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from app.database import SessionLocal
 from app.services.ticket import TicketService
 from app.schemas.ticket import TicketCreate
-from app.constants import IMAP_SOCKET_TIMEOUT, IMAP_POLL_INTERVAL, EMAIL_BACKOFF_MIN, EMAIL_BACKOFF_MAX
+from app.utils.constants import IMAP_SOCKET_TIMEOUT, IMAP_POLL_INTERVAL, EMAIL_BACKOFF_MIN, EMAIL_BACKOFF_MAX
 from app.utils.logger import email_logger
 
 load_dotenv()

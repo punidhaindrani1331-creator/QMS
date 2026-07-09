@@ -5,7 +5,7 @@ import os
 import time
 from dotenv import load_dotenv
 
-from app.constants import EMAIL_RETRY_ATTEMPTS, EMAIL_RETRY_BACKOFF_BASE, EMAIL_SMTP_TIMEOUT
+from app.utils.constants import EMAIL_RETRY_ATTEMPTS, EMAIL_RETRY_BACKOFF_BASE, EMAIL_SMTP_TIMEOUT
 from app.utils.logger import email_logger
 
 load_dotenv()

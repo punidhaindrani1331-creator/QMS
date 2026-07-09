@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, status, BackgroundTasks, HTTPException
 from sqlalchemy.orm import Session
 
-from app.constants import STAFF_ROLES
-from app.dependencies import get_db
+from app.utils.constants import STAFF_ROLES
+from app.utils.dependencies import get_db
 from app.schemas.ticket import TicketCreate, TicketResponse, TicketStatusUpdate, TicketAssignUpdate
 from app.services.ticket import TicketService
 from app.utils.security import require_staff, get_current_user, require_staff_only

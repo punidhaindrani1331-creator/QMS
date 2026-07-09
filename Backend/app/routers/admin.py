@@ -9,12 +9,12 @@ from sqlalchemy import func
 from pydantic import BaseModel
 
 from app.database import SessionLocal
-from app.dependencies import get_db
+from app.utils.dependencies import get_db
 from app.models.ticket import Ticket
 from app.models.user import User
 from app.utils.security import require_admin
 from app.utils.logger import email_logger
-from app.constants import DEFAULT_WAIT_TIME_MINS, DEFAULT_PRIORITY
+from app.utils.constants import DEFAULT_WAIT_TIME_MINS, DEFAULT_PRIORITY
 
 router = APIRouter(
     prefix="/admin",

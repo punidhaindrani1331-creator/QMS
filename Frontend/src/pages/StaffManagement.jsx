@@ -65,7 +65,7 @@ export const StaffManagement = () => {
         <div className="table-header">
           <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <Users size={16} />
-            Users &amp; Staff
+            All Staff
           </h2>
           <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
             {loading ? '—' : `${users.length} member${users.length !== 1 ? 's' : ''}`}

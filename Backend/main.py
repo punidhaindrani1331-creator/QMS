@@ -11,7 +11,7 @@ from app.routers import user, ticket, admin, message
 from app.routers import password_reset
 from app.utils.websocket import manager
 from app.utils.logger import logger
-from app.constants import DEFAULT_ALLOWED_ORIGINS
+from app.utils.constants import DEFAULT_ALLOWED_ORIGINS
 
 from fastapi.middleware.cors import CORSMiddleware
 

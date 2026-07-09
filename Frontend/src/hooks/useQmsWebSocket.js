@@ -32,34 +32,47 @@ export function useQmsWebSocket({
   const intervalRef = useRef(null);
 
   useEffect(() => {
-    const ws = new WebSocket(WS_URL);
+    let ws;
 
-    ws.onopen = () => {
-      onLiveChange?.(true);
-    };
+    try {
+      ws = new WebSocket(WS_URL);
 
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        onEvent?.(msg.type, msg.data);
-      } catch {
-        // Malformed message — ignore silently (no business logic to recover)
-      }
-    };
+      ws.onopen = () => {
+        onLiveChange?.(true);
+      };
 
-    ws.onclose = () => {
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          onEvent?.(msg.type, msg.data);
+        } catch {
+          // Malformed message — ignore silently (no business logic to recover)
+        }
+      };
+
+      ws.onclose = () => {
+        onLiveChange?.(false);
+        if (pollFn) {
+          intervalRef.current = setInterval(pollFn, pollIntervalMs);
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.debug('WebSocket error — falling back to polling:', error);
+        onLiveChange?.(false);
+      };
+    } catch (err) {
+      console.debug('WebSocket connection attempt failed:', err);
       onLiveChange?.(false);
       if (pollFn) {
         intervalRef.current = setInterval(pollFn, pollIntervalMs);
       }
-    };
-
-    ws.onerror = () => {
-      onLiveChange?.(false);
-    };
+    }
 
     return () => {
-      ws.close();
+      if (ws) {
+        ws.close();
+      }
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;

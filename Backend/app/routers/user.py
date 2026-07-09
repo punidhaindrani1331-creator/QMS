@@ -3,8 +3,8 @@ from sqlalchemy.orm import Session
 from typing import Optional
 from pydantic import BaseModel
 
-from app.constants import UserRole
-from app.dependencies import get_db
+from app.utils.constants import UserRole
+from app.utils.dependencies import get_db
 from app.schemas.user import UserCreate, UserResponse, UserLogin, Token
 from app.services.user import UserService
 from app.utils.security import get_current_user, require_admin, require_staff

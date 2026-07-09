@@ -678,7 +678,7 @@ input[type="password"]::-ms-clear {
   min-height: 0;
 }
 
-.table-container > div {
+.table-container > div:not(.table-header) {
   flex: 1;
   overflow-y: auto;
   min-height: 0;
@@ -708,26 +708,7 @@ input[type="password"]::-ms-clear {
   text-align: left;
 }
 
-.qms-table th {
-  padding: 0.6rem 1rem;
-  background: var(--bg-table-head);
-  color: var(--text-secondary);
-  font-weight: 600;
-  font-size: 0.78rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  border-bottom: 1px solid var(--border-color);
-  position: sticky;
-  top: 0;
-  z-index: 2;
-}
 
-.qms-table td {
-  padding: 0.55rem 1rem;
-  border-bottom: 1px solid var(--border-color);
-  color: var(--text-primary);
-  font-size: 0.85rem;
-}
 
 .qms-table tbody tr:last-child td {
   border-bottom: none;
@@ -1193,7 +1174,8 @@ textarea.form-input {
 }
 
 .table-header {
-  padding: 1rem 1.25rem;
+  padding: 0.75rem 1.25rem;
+  flex: 0 0 auto;
 }
 
 .table-header h2 {
@@ -1206,12 +1188,21 @@ textarea.form-input {
 }
 
 .qms-table th {
-  padding: 0.7rem 1.1rem;
-  font-size: 0.74rem;
+  padding: 0.5rem 1rem;
+  background: var(--bg-table-head);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   white-space: nowrap;
+  border-bottom: 1px solid var(--border-color);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  vertical-align: middle;
+  text-align: left;
 }
 
 .qms-table td {

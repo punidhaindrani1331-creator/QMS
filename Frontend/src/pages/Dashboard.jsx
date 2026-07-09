@@ -290,7 +290,7 @@ export const Dashboard = () => {
           <div className="table-header">
             <h2>
               <Users size={16} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '0.5rem' }} />
-              All Staff
+              Users & Staffs
             </h2>
             <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
               {users.length} member{users.length !== 1 ? 's' : ''}

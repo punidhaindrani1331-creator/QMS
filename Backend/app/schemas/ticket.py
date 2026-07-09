@@ -2,7 +2,7 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 from datetime import datetime
 from typing import Optional
 
-from app.constants import TicketStatus, TicketPriority, TicketCategory
+from app.utils.constants import TicketStatus, TicketPriority, TicketCategory
 
 
 class TicketCreate(BaseModel):

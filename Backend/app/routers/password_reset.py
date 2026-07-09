@@ -24,12 +24,12 @@ from sqlalchemy.orm import Session
 from jose import jwt, JWTError
 from dotenv import load_dotenv
 
-from app.dependencies import get_db
+from app.utils.dependencies import get_db
 from app.models.user import User
 from app.utils.security import SECRET_KEY, ALGORITHM, hash_password
 from app.utils.email_sender import _send_email
+from app.utils.constants import RESET_TOKEN_EXPIRE_MINUTES
 from app.utils.logger import auth_logger
-from app.constants import RESET_TOKEN_EXPIRE_MINUTES
 
 load_dotenv()
 

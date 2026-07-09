@@ -4,7 +4,7 @@ import os
 from sqlalchemy.orm import Session
 from fastapi import BackgroundTasks, HTTPException, status
 
-from app.constants import TicketStatus, TicketPriority, DEFAULT_WAIT_TIME_MINS
+from app.utils.constants import TicketStatus, TicketPriority, DEFAULT_WAIT_TIME_MINS
 from app.models.ticket import Ticket
 from app.schemas.ticket import TicketCreate
 from app.utils.email_sender import send_ticket_confirmation, send_status_update_email
